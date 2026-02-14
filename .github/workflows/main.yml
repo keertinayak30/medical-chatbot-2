@@ -16,4 +16,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://keertinayak30:$HF_TOKEN@huggingface.co/spaces/keertinayak30/medical-chatbot main
+        run: git push --force https://keertinayak30:$HF_TOKEN@huggingface.co/spaces/keertinayak30/medical-chatbot main
