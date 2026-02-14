@@ -24,24 +24,58 @@ os.environ["PINECONE_API_KEY"] = PINECONE_API_KEY
 os.environ["GROQ_API_KEY"] = GROQ_API_KEY
 
 
-embeddings = download_hugging_face_embeddings()
-
 index_name = "medchatbot2" 
 
-docsearch = PineconeVectorStore.from_existing_index(
-    index_name=index_name,
-    embedding=embeddings
-)
+embeddings = None
+docsearch = None
+retriever = None
+rag_chain = None
+
+def init_rag():
+    global embeddings, docsearch, retriever, rag_chain
+    if embeddings is None:
+        print("🔄 Initializing embeddings...")
+        embeddings = download_hugging_face_embeddings()
+        docsearch = PineconeVectorStore.from_existing_index(
+            index_name=index_name,
+            embedding=embeddings
+        )
+        retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+        
+        llm = ChatGroq(
+            model_name="llama-3.3-70b-versatile", 
+            groq_api_key=GROQ_API_KEY,
+            temperature=0.3,
+            streaming=True
+        )
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+        ])
+        
+        question_answer_chain = create_stuff_documents_chain(llm, prompt)
+        rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+    
+    return rag_chain
 
 
-retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":3})
 
-llm = ChatGroq(
-    model_name="llama-3.3-70b-versatile", 
-    groq_api_key=GROQ_API_KEY,
-    temperature=0.3,
-    streaming=True
-)
+# embeddings = download_hugging_face_embeddings()
+
+# docsearch = PineconeVectorStore.from_existing_index(
+#     index_name=index_name,
+#     embedding=embeddings
+# )
+
+# retriever = docsearch.as_retriever(search_type="similarity", search_kwargs={"k":3})
+
+# llm = ChatGroq(
+#     model_name="llama-3.3-70b-versatile", 
+#     groq_api_key=GROQ_API_KEY,
+#     temperature=0.3,
+#     streaming=True
+# )
 
 memory = ConversationBufferWindowMemory(
     k=5, 
@@ -49,28 +83,28 @@ memory = ConversationBufferWindowMemory(
     return_messages=True
 )
 
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", system_prompt),
-        ("human", "{input}"),
-    ]
-)
+# prompt = ChatPromptTemplate.from_messages(
+#     [
+#         ("system", system_prompt),
+#         ("human", "{input}"),
+#     ]
+# )
 
-question_answer_chain = create_stuff_documents_chain(llm, prompt)
-rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+# question_answer_chain = create_stuff_documents_chain(llm, prompt)
+# rag_chain = create_retrieval_chain(retriever, question_answer_chain)
 
-conversation_chain = ConversationalRetrievalChain.from_llm(
-    llm=llm,
-    retriever=retriever,
-    combine_docs_chain_kwargs={
-        "prompt": ChatPromptTemplate.from_messages([
-            ("system", system_prompt),MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{context}\n\nQuestion: {question}")
-        ])
-    },
-    return_source_documents=True,
-    verbose=False 
-)
+# conversation_chain = ConversationalRetrievalChain.from_llm(
+#     llm=llm,
+#     retriever=retriever,
+#     combine_docs_chain_kwargs={
+#         "prompt": ChatPromptTemplate.from_messages([
+#             ("system", system_prompt),MessagesPlaceholder(variable_name="chat_history"),
+#             ("human", "{context}\n\nQuestion: {question}")
+#         ])
+#     },
+#     return_source_documents=True,
+#     verbose=False 
+# )
 
 
 @app.route("/")
@@ -81,6 +115,8 @@ def index():
 
 @app.route("/get", methods=["POST"])  
 def chat():
+    global embeddings, docsearch, retriever, rag_chain
+    
     if request.is_json:
         data = request.get_json()
         msg = data.get('msg', '')
@@ -91,6 +127,8 @@ def chat():
         return jsonify({"response": "Please enter a message!"}), 400
     
     print(f"User: {msg}")
+
+    rag_chain = init_rag()
 
     recent_history = [h.content for h in memory.chat_memory.messages[-3:] if hasattr(h, 'content')]
     full_query = msg if len(recent_history) == 0 else f"{msg} (previous: {' '.join(recent_history[-1:])})"
@@ -109,4 +147,5 @@ def chat():
 
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port= 8080, debug= True)
+    port = int(os.environ.get('PORT', 10000))
+    app.run(host="0.0.0.0", port= port, debug= True)
