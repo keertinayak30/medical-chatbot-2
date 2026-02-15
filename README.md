@@ -34,7 +34,7 @@ Built a Retrieval-Augmented Generation (RAG) medical chatbot using the Gale Ency
 2. **Vector Search:** User queries are embedded and compared against the Pinecone index to find relevant medical context.
 3. **RAG Chain:** The retrieved context and the user's question are sent to the Llama model to generate a grounded response.
 
-## 📁 Project Structure
+## Project Structure
 * `app.py`: Main Flask application and API routes.
 * `src/helper.py`: Utility functions for embeddings and data processing.
 * `src/prompt.py`: System prompts and logic for the AI's behavior.
